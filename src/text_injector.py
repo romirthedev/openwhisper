@@ -1,11 +1,17 @@
 """
 Types/pastes transcribed text at the current cursor position.
 
-Strategy (most reliable on macOS):
-  1. Clipboard paste: saves clipboard, puts text in clipboard, sends Cmd+V,
-     then restores the clipboard after a short delay.
-  2. Direct typing: uses pynput to type each character (slower for long text,
-     but doesn't disturb the clipboard).
+Two injection strategies:
+
+  Clipboard paste (Standard mode default)
+    Saves clipboard → copies text → sends Cmd+V → restores clipboard.
+    Most reliable across all macOS apps, handles any Unicode.
+    Slight overhead (~150 ms setup + restore) is fine for single-shot injection.
+
+  Direct typing (Continuous Flow mode)
+    Uses pynput to type characters directly.
+    No clipboard disruption — essential when chunks arrive rapidly.
+    Requires Accessibility permission.
 """
 import time
 import threading
@@ -26,24 +32,33 @@ except ImportError:
 
 class TextInjector:
     """
-    Injects text at the current cursor position.
-
     Args:
-        use_clipboard: Prefer clipboard paste (True) or direct typing (False).
+        use_clipboard: Use clipboard paste for `inject()` (Standard mode).
+                       `inject_immediate()` always uses direct typing.
     """
 
     def __init__(self, use_clipboard: bool = True):
         self.use_clipboard = use_clipboard
         self._controller = KeyboardController() if PYNPUT_AVAILABLE else None
+        # Serialise clipboard operations so rapid standard-mode injections
+        # don't race (shouldn't normally happen, but defensive).
+        self._clipboard_lock = threading.Lock()
+
+    # ------------------------------------------------------------------ #
+    #  Standard mode — clipboard paste                                      #
+    # ------------------------------------------------------------------ #
 
     def inject(self, text: str):
-        """Inject text at current cursor. Non-blocking – fires and forgets."""
+        """
+        Inject text via clipboard paste (Standard mode).
+        Non-blocking — fires in a background thread.
+        """
         if not text:
             return
         threading.Thread(target=self._inject_sync, args=(text,), daemon=True).start()
 
     def _inject_sync(self, text: str):
-        # Small delay so the user has time to release the hotkey before injection
+        # Brief pause so the user's key-release event settles before we paste.
         time.sleep(0.15)
 
         if self.use_clipboard and PYPERCLIP_AVAILABLE and PYNPUT_AVAILABLE:
@@ -54,19 +69,19 @@ class TextInjector:
             print(f"[OpenWhisper] Cannot inject text (no pynput). Text: {text}")
 
     def _paste_via_clipboard(self, text: str):
-        try:
-            old = pyperclip.paste()
-        except Exception:
-            old = ""
+        with self._clipboard_lock:
+            try:
+                old = pyperclip.paste()
+            except Exception:
+                old = ""
 
-        pyperclip.copy(text)
-        time.sleep(0.05)
+            pyperclip.copy(text)
+            time.sleep(0.04)
 
-        # Simulate Cmd+V
-        with self._controller.pressed(Key.cmd):
-            self._controller.tap("v")
+            with self._controller.pressed(Key.cmd):
+                self._controller.tap("v")
 
-        # Restore clipboard after a short delay
+        # Restore clipboard after paste has settled (non-blocking)
         def _restore():
             time.sleep(0.5)
             try:
@@ -76,5 +91,22 @@ class TextInjector:
 
         threading.Thread(target=_restore, daemon=True).start()
 
+    # ------------------------------------------------------------------ #
+    #  Continuous Flow mode — direct typing                                 #
+    # ------------------------------------------------------------------ #
+
+    def inject_immediate(self, text: str):
+        """
+        Type text directly using pynput (Continuous Flow mode).
+        Synchronous — blocks until typing is done, which is fast for
+        short chunks. Does not disturb the clipboard.
+        """
+        if not text or not PYNPUT_AVAILABLE:
+            return
+        threading.Thread(target=self._type_directly, args=(text,), daemon=True).start()
+
     def _type_directly(self, text: str):
-        self._controller.type(text)
+        try:
+            self._controller.type(text)
+        except Exception as exc:
+            print(f"[OpenWhisper] Direct typing error: {exc}")

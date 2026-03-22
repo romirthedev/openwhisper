@@ -26,6 +26,8 @@ DEFAULTS = {
     "theme": "dark",
     # Whether to auto-format text (punctuation, capitalization)
     "auto_format": True,
+    # Recording mode: 'standard' (wait→correct→paste) or 'continuous' (live typing)
+    "mode": "standard",
 }
 
 
