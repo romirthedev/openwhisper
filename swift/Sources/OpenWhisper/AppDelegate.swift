@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var transcriber: Transcriber?
     private var textPaster: TextPaster?
     private var settingsWindowController: NSWindowController?
+    private var historyWindowController: NSWindowController?
     private var isRecording = false
     private var recordingStart: Date = Date()
     private var previousApp: NSRunningApplication?
@@ -52,10 +53,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "OpenWhisper", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "History", action: #selector(openHistory), keyEquivalent: "h")
         menu.addItem(withTitle: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem?.menu = menu
+    }
+
+    @objc private func openHistory() {
+        if historyWindowController == nil {
+            let view = HistoryView()
+            let hc = NSHostingController(rootView: view)
+            let window = NSWindow(contentViewController: hc)
+            window.title = "OpenWhisper — History"
+            window.styleMask = [.titled, .closable, .resizable]
+            window.setContentSize(NSSize(width: 520, height: 560))
+            window.center()
+            historyWindowController = NSWindowController(window: window)
+        }
+        historyWindowController?.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func openSettings() {
