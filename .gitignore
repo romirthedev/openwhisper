@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+src/__pycache__/
+src/ui/__pycache__/
+
+# Swift build
+swift/.build/
+swift/OpenWhisper.app/
+
+# macOS
+.DS_Store
+
+# App data
+~/.openwhisper/

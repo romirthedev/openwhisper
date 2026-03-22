@@ -18,28 +18,9 @@ try:
 except ImportError:
     SOUNDDEVICE_AVAILABLE = False
 
-try:
-    from pynput import keyboard as pynput_keyboard
-    PYNPUT_AVAILABLE = True
-except ImportError:
-    PYNPUT_AVAILABLE = False
+from key_listener import KeyListener, resolve_hotkey
 
 SAMPLE_RATE = 16000  # 16 kHz required by Whisper
-
-# Maps config hotkey string to pynput Key constant
-def _resolve_key(hotkey_str: str):
-    if not PYNPUT_AVAILABLE:
-        return None
-    mapping = {
-        "fn": pynput_keyboard.Key.fn,
-        "right_alt": pynput_keyboard.Key.alt_r,
-        "right_cmd": pynput_keyboard.Key.cmd_r,
-        "right_ctrl": pynput_keyboard.Key.ctrl_r,
-        "caps_lock": pynput_keyboard.Key.caps_lock,
-    }
-    for i in range(1, 13):
-        mapping[f"f{i}"] = getattr(pynput_keyboard.Key, f"f{i}", None)
-    return mapping.get(hotkey_str, pynput_keyboard.Key.fn)
 
 
 class AudioRecorder:
@@ -72,8 +53,7 @@ class AudioRecorder:
         self._lock = threading.Lock()
         self._stream: Optional[object] = None
         self._start_time: float = 0.0
-        self._listener: Optional[object] = None
-        self._target_key = _resolve_key(hotkey)
+        self._listener: Optional[KeyListener] = None
 
     # ------------------------------------------------------------------ #
     #  Public API                                                           #
@@ -81,15 +61,17 @@ class AudioRecorder:
 
     def start(self):
         """Start listening for the hotkey. Non-blocking."""
-        if not PYNPUT_AVAILABLE:
-            self.on_error("pynput not installed. Run: pip install pynput")
-            return
         if not SOUNDDEVICE_AVAILABLE:
             self.on_error("sounddevice not installed. Run: pip install sounddevice")
             return
 
+        if resolve_hotkey(self.hotkey) is None:
+            self.on_error(f"Unknown hotkey: {self.hotkey}")
+            return
+
         try:
-            self._listener = pynput_keyboard.Listener(
+            self._listener = KeyListener(
+                hotkey=self.hotkey,
                 on_press=self._on_press,
                 on_release=self._on_release,
             )
@@ -109,7 +91,14 @@ class AudioRecorder:
 
     def update_hotkey(self, hotkey: str):
         self.hotkey = hotkey
-        self._target_key = _resolve_key(hotkey)
+        if self._listener:
+            self._listener.stop()
+        self._listener = KeyListener(
+            hotkey=hotkey,
+            on_press=self._on_press,
+            on_release=self._on_release,
+        )
+        self._listener.start()
 
     @property
     def is_recording(self) -> bool:
@@ -119,12 +108,12 @@ class AudioRecorder:
     #  Internal                                                             #
     # ------------------------------------------------------------------ #
 
-    def _on_press(self, key):
-        if key == self._target_key and not self._is_recording:
+    def _on_press(self):
+        if not self._is_recording:
             self._begin_recording()
 
-    def _on_release(self, key):
-        if key == self._target_key and self._is_recording:
+    def _on_release(self):
+        if self._is_recording:
             self._end_recording()
 
     def _begin_recording(self):
