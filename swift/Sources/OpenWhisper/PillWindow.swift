@@ -19,13 +19,13 @@ final class PillWindow {
     }
 
     private func setupPanel() {
-        let width: CGFloat = 220
-        let height: CGFloat = 48
+        let width: CGFloat = 40
+        let height: CGFloat = 12
 
         let screen = NSScreen.main ?? NSScreen.screens[0]
-        let screenFrame = screen.visibleFrame
+        let screenFrame = screen.frame
         let x = screenFrame.midX - width / 2
-        let y = screenFrame.minY + 40
+        let y = screenFrame.minY + 6
 
         let panel = NSPanel(
             contentRect: NSRect(x: x, y: y, width: width, height: height),
@@ -36,7 +36,7 @@ final class PillWindow {
         panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.ignoresMouseEvents = true
 
@@ -83,45 +83,23 @@ final class PillViewModel: ObservableObject {
 
 struct PillView: View {
     @ObservedObject var viewModel: PillViewModel
-    @State private var pulse = false
-    @State private var dotCount = 0
+    @State private var glow = false
 
     var body: some View {
-        ZStack {
-            Capsule()
-                .fill(Color.black)
-                .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 4)
-
-            HStack(spacing: 10) {
-                if viewModel.state == .recording {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 10, height: 10)
-                        .scaleEffect(pulse ? 1.3 : 1.0)
-                        .animation(
-                            Animation.easeInOut(duration: 0.6).repeatForever(autoreverses: true),
-                            value: pulse
-                        )
-                    Text("Recording...")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
-                } else {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(0.7)
-                    Text("Transcribing...")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
-                }
-            }
-            .padding(.horizontal, 18)
-        }
-        .frame(height: 48)
-        .onAppear {
-            pulse = true
-        }
-        .onChange(of: viewModel.state) { _ in
-            pulse = viewModel.state == .recording
-        }
+        Capsule()
+            .fill(viewModel.state == .recording
+                  ? Color.red.opacity(glow ? 0.9 : 0.5)
+                  : Color.orange.opacity(glow ? 0.9 : 0.5))
+            .frame(width: 36, height: 6)
+            .shadow(color: viewModel.state == .recording
+                    ? Color.red.opacity(glow ? 0.8 : 0.3)
+                    : Color.orange.opacity(glow ? 0.8 : 0.3),
+                    radius: glow ? 8 : 4)
+            .animation(
+                Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+                value: glow
+            )
+            .onAppear { glow = true }
+            .onChange(of: viewModel.state) { _ in glow = true }
     }
 }

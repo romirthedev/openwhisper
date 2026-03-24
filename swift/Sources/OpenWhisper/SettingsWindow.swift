@@ -10,92 +10,94 @@ struct SettingsView: View {
     private let languageOptions = ["en", "es", "fr", "de", "it", "pt", "zh", "ja", "ko"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("OpenWhisper Settings")
-                .font(.title2)
-                .fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Settings")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.black)
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Whisper Model:")
-                        .frame(width: 130, alignment: .leading)
+                    Text("Whisper Model")
+                        .font(.system(size: 13))
+                        .foregroundColor(.black)
+                    Spacer()
                     Picker("", selection: $modelSize) {
                         ForEach(modelOptions, id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }
-                    .frame(width: 160)
+                    .frame(width: 140)
                     .labelsHidden()
                 }
 
                 HStack {
-                    Text("Language:")
-                        .frame(width: 130, alignment: .leading)
+                    Text("Language")
+                        .font(.system(size: 13))
+                        .foregroundColor(.black)
+                    Spacer()
                     Picker("", selection: $language) {
                         ForEach(languageOptions, id: \.self) { lang in
                             Text(lang).tag(lang)
                         }
                     }
-                    .frame(width: 160)
+                    .frame(width: 140)
                     .labelsHidden()
                 }
 
                 HStack {
-                    Text("Push-to-talk key:")
-                        .frame(width: 130, alignment: .leading)
-                    Text("Right ⌘ (fixed)")
-                        .foregroundColor(.secondary)
+                    Text("Push-to-talk")
+                        .font(.system(size: 13))
+                        .foregroundColor(.black)
+                    Spacer()
+                    Text("Right ⌘")
+                        .font(.system(size: 13))
+                        .foregroundColor(.black.opacity(0.5))
                 }
             }
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Permissions Required:")
-                    .fontWeight(.medium)
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Accessibility – for global key monitoring")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Microphone – for audio capture")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Permissions")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.black)
+                Text("Accessibility + Microphone required")
+                    .font(.system(size: 11))
+                    .foregroundColor(.black.opacity(0.5))
             }
 
             Spacer()
 
             HStack {
                 Spacer()
-                Button("Save Config") {
+                Button("Save") {
                     saveConfig()
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(.black)
             }
         }
-        .padding(24)
-        .frame(width: 400, height: 300)
+        .padding(20)
+        .frame(width: 340, height: 260)
         .background(Color(red: 0.961, green: 0.941, blue: 0.910))
     }
 
     private func saveConfig() {
-        let config: [String: String] = [
-            "model_size": modelSize,
-            "language": language
-        ]
         let configDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".openwhisper")
         try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
         let configFile = configDir.appendingPathComponent("config.json")
-        if let data = try? JSONSerialization.data(withJSONObject: config, options: .prettyPrinted) {
+
+        // Read existing config so we don't clobber other keys
+        var existing: [String: Any] = [:]
+        if let data = try? Data(contentsOf: configFile),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            existing = json
+        }
+        existing["whisper_model"] = modelSize
+        existing["language"] = language
+
+        if let data = try? JSONSerialization.data(withJSONObject: existing, options: .prettyPrinted) {
             try? data.write(to: configFile)
         }
     }

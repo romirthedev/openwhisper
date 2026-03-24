@@ -2,6 +2,21 @@ import AppKit
 import SwiftUI
 import AVFoundation
 
+func owLog(_ msg: String) {
+    let ts = ISO8601DateFormatter().string(from: Date())
+    let line = "[\(ts)] \(msg)\n"
+    let logPath = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".openwhisper/app.log")
+    if let fh = try? FileHandle(forWritingTo: logPath) {
+        fh.seekToEndOfFile()
+        fh.write(line.data(using: .utf8)!)
+        fh.closeFile()
+    } else {
+        try? line.data(using: .utf8)?.write(to: logPath)
+    }
+    print(msg)
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
@@ -82,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: hostingController)
             window.title = "OpenWhisper Settings"
             window.styleMask = [.titled, .closable]
-            window.setContentSize(NSSize(width: 400, height: 300))
+            window.setContentSize(NSSize(width: 340, height: 260))
             window.center()
             settingsWindowController = NSWindowController(window: window)
         }
@@ -94,17 +109,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Request microphone permission
         AVCaptureDevice.requestAccess(for: .audio) { granted in
             if !granted {
-                print("[OpenWhisper] Microphone permission denied")
+                owLog("[OpenWhisper] Microphone permission denied")
             }
         }
 
-        // Request accessibility / input monitoring
-        // Use the string key directly to avoid concurrency warning with kAXTrustedCheckOptionPrompt
-        let promptKey = "AXTrustedCheckOptionPrompt" as CFString
-        let opts = [promptKey: true] as CFDictionary
-        let trusted = AXIsProcessTrustedWithOptions(opts)
+        // Check accessibility — only prompt if not already granted
+        let trusted = AXIsProcessTrusted()
         if !trusted {
-            print("[OpenWhisper] Accessibility permission not granted yet - please grant in System Settings")
+            let promptKey = "AXTrustedCheckOptionPrompt" as CFString
+            let opts = [promptKey: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(opts)
+            owLog("[OpenWhisper] Accessibility permission not granted yet - please grant in System Settings")
         }
     }
 
@@ -118,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try audioCapture?.startRecording()
         } catch {
-            print("[OpenWhisper] Failed to start recording: \(error)")
+            owLog("[OpenWhisper] Failed to start recording: \(error)")
             isRecording = false
             pillWindow?.hide()
         }
@@ -129,6 +144,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isRecording = false
         pillWindow?.show(state: .transcribing)
 
+        // Capture target app NOW before anything else changes focus
+        let target = self.previousApp
+        owLog("[OpenWhisper] stopRecording — target app: \(target?.localizedName ?? "nil"), pid: \(target?.processIdentifier ?? -1)")
+
         let duration = Date().timeIntervalSince(recordingStart)
         audioCapture?.stopRecording { [weak self] wavURL in
             guard let self = self, let wavURL = wavURL else {
@@ -138,15 +157,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 do {
                     let text = try await self.transcriber?.transcribe(wavFile: wavURL, duration: duration) ?? ""
+                    owLog("[OpenWhisper] Transcribed: '\(text)' (\(text.count) chars)")
                     if !text.isEmpty {
                         let paster = self.textPaster
-                        let target = self.previousApp
                         DispatchQueue.global(qos: .userInteractive).async {
+                            owLog("[OpenWhisper] About to paste into \(target?.localizedName ?? "nil")")
                             paster?.paste(text: text, into: target)
                         }
                     }
                 } catch {
-                    print("[OpenWhisper] Transcription error: \(error)")
+                    owLog("[OpenWhisper] Transcription error: \(error)")
                 }
                 self.pillWindow?.hide()
                 try? FileManager.default.removeItem(at: wavURL)
