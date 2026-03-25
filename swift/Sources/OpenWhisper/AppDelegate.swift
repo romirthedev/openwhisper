@@ -117,12 +117,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "OpenWhisper", action: nil, keyEquivalent: ""))
+        let attrs: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor.black]
+
+        let header = NSMenuItem()
+        header.attributedTitle = NSAttributedString(string: "OpenWhisper", attributes: [
+            .foregroundColor: NSColor.black,
+            .font: NSFont.boldSystemFont(ofSize: 13)
+        ])
+        menu.addItem(header)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "History", action: #selector(openHistory), keyEquivalent: "h")
-        menu.addItem(withTitle: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+
+        let history = NSMenuItem(title: "History", action: #selector(openHistory), keyEquivalent: "h")
+        history.attributedTitle = NSAttributedString(string: "History", attributes: attrs)
+        menu.addItem(history)
+
+        let settings = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settings.attributedTitle = NSAttributedString(string: "Settings...", attributes: attrs)
+        menu.addItem(settings)
+
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        let quit = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.attributedTitle = NSAttributedString(string: "Quit", attributes: attrs)
+        menu.addItem(quit)
+
         statusItem?.menu = menu
     }
 

@@ -42,8 +42,8 @@ bundle: build
 	@ln -sf $(PROJECT_ROOT)/src $(CONTENTS)/Resources/src || true
 	@ln -sf $(PROJECT_ROOT)/.venv $(CONTENTS)/Resources/.venv 2>/dev/null || true
 
-	@# Sign the app so macOS Accessibility permission persists across rebuilds
-	@codesign --force --sign - --deep $(APP_DIR)
+	@# Sign with stable identifier so Accessibility permission persists across rebuilds
+	@codesign --force --sign - --deep --identifier "com.openwhisper.app" $(APP_DIR)
 
 	@echo "==> Built: $(APP_DIR)"
 	@echo "    Run with: open $(APP_DIR)"
