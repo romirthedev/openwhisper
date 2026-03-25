@@ -36,6 +36,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide dock icon (menu bar app)
         NSApp.setActivationPolicy(.accessory)
 
+        // Check if dependencies are installed — if not, run installer
+        if !depsInstalled() {
+            showSetupWindow()
+            return
+        }
+
+        launchApp()
+    }
+
+    private func depsInstalled() -> Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let repoDir = home + "/openwhisper"
+        let venvPython = repoDir + "/.venv/bin/python3"
+        let workerScript = repoDir + "/src/whisper_worker.py"
+
+        // Also check inside the app bundle (symlinks from Makefile)
+        let resources = Bundle.main.resourcePath ?? ""
+        let bundledPython = resources + "/.venv/bin/python3"
+        let bundledWorker = resources + "/src/whisper_worker.py"
+
+        let hasPython = FileManager.default.fileExists(atPath: venvPython)
+            || FileManager.default.fileExists(atPath: bundledPython)
+        let hasWorker = FileManager.default.fileExists(atPath: workerScript)
+            || FileManager.default.fileExists(atPath: bundledWorker)
+
+        owLog("[OpenWhisper] Deps check — python: \(hasPython), worker: \(hasWorker)")
+        return hasPython && hasWorker
+    }
+
+    private var setupWindowController: NSWindowController?
+
+    private func showSetupWindow() {
+        NSApp.setActivationPolicy(.regular)
+
+        let setupView = SetupView(onInstallComplete: { [weak self] in
+            self?.setupWindowController?.close()
+            NSApp.setActivationPolicy(.accessory)
+            self?.launchApp()
+        })
+        let hc = NSHostingController(rootView: setupView)
+        let window = NSWindow(contentViewController: hc)
+        window.title = "OpenWhisper Setup"
+        window.styleMask = [.titled, .closable]
+        window.setContentSize(NSSize(width: 480, height: 320))
+        window.center()
+        setupWindowController = NSWindowController(window: window)
+        setupWindowController?.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func launchApp() {
         setupMenuBar()
         requestPermissions()
 

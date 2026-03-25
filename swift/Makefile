@@ -28,11 +28,15 @@ bundle: build
 		-c "Add :CFBundleShortVersionString string 1.0" \
 		-c "Add :CFBundleExecutable string $(PRODUCT_NAME)" \
 		-c "Add :CFBundlePackageType string APPL" \
+		-c "Add :CFBundleIconFile string AppIcon" \
 		-c "Add :LSMinimumSystemVersion string 13.0" \
 		-c "Add :LSUIElement bool true" \
 		-c "Add :NSMicrophoneUsageDescription string OpenWhisper needs microphone access to record your voice." \
 		-c "Add :NSPrincipalClass string NSApplication" \
 		$(CONTENTS)/Info.plist
+
+	@# Copy app icon
+	@cp AppIcon.icns $(RESOURCES_DIR)/AppIcon.icns
 
 	@# Copy Python resources
 	@ln -sf $(PROJECT_ROOT)/src $(CONTENTS)/Resources/src || true
