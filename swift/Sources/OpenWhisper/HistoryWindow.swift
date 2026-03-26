@@ -79,10 +79,11 @@ struct HistoryView: View {
             HStack {
                 Text("Transcripts")
                     .font(.title2).fontWeight(.semibold)
+                    .foregroundColor(.black)
                 Spacer()
                 Button(action: { transcripts = loadTranscripts() }) {
                     Image(systemName: "arrow.clockwise")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black.opacity(0.4))
                 }
                 .buttonStyle(.plain)
                 .help("Refresh")
@@ -93,12 +94,12 @@ struct HistoryView: View {
 
             // Search
             HStack {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                Image(systemName: "magnifyingglass").foregroundColor(.black.opacity(0.4))
                 TextField("Search…", text: $search)
                     .textFieldStyle(.plain)
                 if !search.isEmpty {
                     Button(action: { search = "" }) {
-                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.black.opacity(0.4))
                     }.buttonStyle(.plain)
                 }
             }
@@ -114,7 +115,7 @@ struct HistoryView: View {
                 Spacer()
                 Text(search.isEmpty ? "No transcripts yet.\nHold Right ⌘ to record." : "No results.")
                     .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.black.opacity(0.4))
                     .font(.callout)
                 Spacer()
             } else {
@@ -162,7 +163,7 @@ struct TranscriptCard: View {
             HStack(alignment: .top) {
                 Text(transcript.text)
                     .font(.system(size: 13))
-                    .foregroundColor(.primary)
+                    .foregroundColor(.black)
                     .fixedSize(horizontal: false, vertical: true)
                     .lineLimit(4)
                 Spacer(minLength: 8)
@@ -171,27 +172,27 @@ struct TranscriptCard: View {
             HStack(spacing: 12) {
                 Text(transcript.formattedDate)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.black.opacity(0.4))
                 if transcript.wordCount > 0 {
                     Text("\(transcript.wordCount) words")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black.opacity(0.4))
                 }
                 if transcript.duration > 0 {
                     Text(String(format: "%.0fs", transcript.duration))
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black.opacity(0.4))
                 }
                 Spacer()
                 Button(isCopied ? "Copied!" : "Copy") { onCopy() }
                     .font(.caption)
                     .buttonStyle(.plain)
-                    .foregroundColor(isCopied ? .green : .accentColor)
+                    .foregroundColor(isCopied ? .green : .black.opacity(0.6))
 
                 Button(action: onDelete) {
                     Image(systemName: "trash")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black.opacity(0.4))
                 }
                 .buttonStyle(.plain)
             }
