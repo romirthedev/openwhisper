@@ -4,18 +4,39 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("modelSize") private var modelSize = "base.en"
     @AppStorage("language") private var language = "en"
+    @AppStorage("dictationMode") private var dictationMode = "standard"
     @AppStorage("hotkeyCode") private var hotkeyCode = 54
 
     private let modelOptions = ["tiny.en", "base.en", "small.en", "medium.en", "large-v3"]
     private let languageOptions = ["en", "es", "fr", "de", "it", "pt", "zh", "ja", "ko"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Settings")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.black)
 
             VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Mode")
+                        .font(.system(size: 13))
+                        .foregroundColor(.black)
+                    Spacer()
+                    Picker("", selection: $dictationMode) {
+                        Text("Standard").tag("standard")
+                        Text("Live").tag("live")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 160)
+                    .labelsHidden()
+                }
+
+                Text(dictationMode == "live"
+                     ? "Words appear as you speak. AI cleanup on release."
+                     : "Transcribe + cleanup after you release Right ⌘.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.black.opacity(0.4))
+
                 HStack {
                     Text("Whisper Model")
                         .font(.system(size: 13))
@@ -78,7 +99,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 340, height: 260)
+        .frame(width: 340, height: 300)
         .background(Color(red: 0.961, green: 0.941, blue: 0.910))
     }
 

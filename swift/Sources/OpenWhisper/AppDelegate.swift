@@ -32,6 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recordingStart: Date = Date()
     private var previousApp: NSRunningApplication?
 
+    // Live dictation state
+    private var liveTimer: Timer?
+    private var liveTranscribedText = ""  // what we've pasted so far in live mode
+    private var liveTranscribing = false  // prevents overlapping transcriptions
+    private var liveCharsPasted = 0       // total chars pasted in this live session
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon (menu bar app)
         NSApp.setActivationPolicy(.accessory)
@@ -166,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: hostingController)
             window.title = "OpenWhisper Settings"
             window.styleMask = [.titled, .closable]
-            window.setContentSize(NSSize(width: 340, height: 260))
+            window.setContentSize(NSSize(width: 340, height: 300))
             window.center()
             settingsWindowController = NSWindowController(window: window)
         }
@@ -192,11 +198,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private var isLiveMode: Bool {
+        UserDefaults.standard.string(forKey: "dictationMode") == "live"
+    }
+
     private func startRecording() {
         guard !isRecording else { return }
         isRecording = true
         recordingStart = Date()
-        // Remember which app the user was in before recording
         previousApp = NSWorkspace.shared.frontmostApplication
         pillWindow?.show(state: .recording)
         do {
@@ -205,40 +214,152 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             owLog("[OpenWhisper] Failed to start recording: \(error)")
             isRecording = false
             pillWindow?.hide()
+            return
+        }
+
+        // Start live transcription loop if in live mode
+        if isLiveMode {
+            liveTranscribedText = ""
+            liveCharsPasted = 0
+            liveTranscribing = false
+            startLiveLoop()
         }
     }
 
     private func stopRecording() {
         guard isRecording else { return }
         isRecording = false
-        pillWindow?.show(state: .transcribing)
+        liveTimer?.invalidate()
+        liveTimer = nil
 
-        // Capture target app NOW before anything else changes focus
         let target = self.previousApp
-        owLog("[OpenWhisper] stopRecording — target app: \(target?.localizedName ?? "nil"), pid: \(target?.processIdentifier ?? -1)")
+        let wasLive = isLiveMode
+        let liveChars = liveCharsPasted
+        owLog("[OpenWhisper] stopRecording — target: \(target?.localizedName ?? "nil"), live: \(wasLive), liveChars: \(liveChars)")
 
-        let duration = Date().timeIntervalSince(recordingStart)
-        audioCapture?.stopRecording { [weak self] wavURL in
-            guard let self = self, let wavURL = wavURL else {
-                Task { @MainActor in self?.pillWindow?.hide() }
-                return
-            }
-            Task { @MainActor in
-                do {
-                    let text = try await self.transcriber?.transcribe(wavFile: wavURL, duration: duration) ?? ""
-                    owLog("[OpenWhisper] Transcribed: '\(text)' (\(text.count) chars)")
-                    if !text.isEmpty {
-                        let paster = self.textPaster
-                        DispatchQueue.global(qos: .userInteractive).async {
-                            owLog("[OpenWhisper] About to paste into \(target?.localizedName ?? "nil")")
-                            paster?.paste(text: text, into: target)
-                        }
-                    }
-                } catch {
-                    owLog("[OpenWhisper] Transcription error: \(error)")
+        if wasLive {
+            // Live mode: do final full transcription + Ollama cleanup, replace what was typed
+            pillWindow?.show(state: .transcribing)
+            let duration = Date().timeIntervalSince(recordingStart)
+            audioCapture?.stopRecording { [weak self] wavURL in
+                guard let self = self, let wavURL = wavURL else {
+                    Task { @MainActor in self?.pillWindow?.hide() }
+                    return
                 }
-                self.pillWindow?.hide()
-                try? FileManager.default.removeItem(at: wavURL)
+                Task { @MainActor in
+                    do {
+                        let text = try await self.transcriber?.transcribe(wavFile: wavURL, duration: duration) ?? ""
+                        owLog("[OpenWhisper] Final transcription: '\(text)' (\(text.count) chars)")
+                        if !text.isEmpty && liveChars > 0 {
+                            let paster = self.textPaster
+                            DispatchQueue.global(qos: .userInteractive).async {
+                                paster?.selectAndReplace(charCount: liveChars, with: text, into: target)
+                            }
+                        } else if !text.isEmpty {
+                            let paster = self.textPaster
+                            DispatchQueue.global(qos: .userInteractive).async {
+                                paster?.paste(text: text, into: target)
+                            }
+                        }
+                    } catch {
+                        owLog("[OpenWhisper] Final transcription error: \(error)")
+                    }
+                    self.pillWindow?.hide()
+                    self.liveTranscribedText = ""
+                    self.liveCharsPasted = 0
+                    try? FileManager.default.removeItem(at: wavURL)
+                }
+            }
+        } else {
+            // Standard mode: unchanged
+            pillWindow?.show(state: .transcribing)
+            let duration = Date().timeIntervalSince(recordingStart)
+            audioCapture?.stopRecording { [weak self] wavURL in
+                guard let self = self, let wavURL = wavURL else {
+                    Task { @MainActor in self?.pillWindow?.hide() }
+                    return
+                }
+                Task { @MainActor in
+                    do {
+                        let text = try await self.transcriber?.transcribe(wavFile: wavURL, duration: duration) ?? ""
+                        owLog("[OpenWhisper] Transcribed: '\(text)' (\(text.count) chars)")
+                        if !text.isEmpty {
+                            let paster = self.textPaster
+                            DispatchQueue.global(qos: .userInteractive).async {
+                                owLog("[OpenWhisper] About to paste into \(target?.localizedName ?? "nil")")
+                                paster?.paste(text: text, into: target)
+                            }
+                        }
+                    } catch {
+                        owLog("[OpenWhisper] Transcription error: \(error)")
+                    }
+                    self.pillWindow?.hide()
+                    try? FileManager.default.removeItem(at: wavURL)
+                }
+            }
+        }
+    }
+
+    // MARK: - Live Dictation
+
+    private func startLiveLoop() {
+        liveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.liveTranscribeChunk()
+            }
+        }
+    }
+
+    private func liveTranscribeChunk() {
+        guard isRecording, !liveTranscribing else { return }
+        guard let snapshot = audioCapture?.snapshotAudio() else { return }
+
+        liveTranscribing = true
+        let target = self.previousApp
+
+        Task {
+            do {
+                let fullText = try await self.transcriber?.transcribeRawOnly(wavFile: snapshot) ?? ""
+                try? FileManager.default.removeItem(at: snapshot)
+
+                await MainActor.run {
+                    self.liveTranscribing = false
+
+                    // Diff: find new text beyond what we already pasted
+                    let previousText = self.liveTranscribedText
+                    guard fullText.count > previousText.count else { return }
+
+                    // Find the new portion
+                    let newText: String
+                    if fullText.hasPrefix(previousText) {
+                        newText = String(fullText.dropFirst(previousText.count)).trimmingCharacters(in: .whitespaces)
+                    } else {
+                        // Whisper re-transcribed differently — just append what looks new
+                        let previousWords = Set(previousText.lowercased().split(separator: " ").map(String.init))
+                        let fullWords = fullText.split(separator: " ")
+                        let newWords = fullWords.filter { !previousWords.contains(String($0).lowercased()) }
+                        newText = newWords.joined(separator: " ")
+                    }
+
+                    guard !newText.isEmpty else { return }
+
+                    let textToType = (self.liveCharsPasted > 0 ? " " : "") + newText
+                    self.liveTranscribedText = fullText
+                    self.liveCharsPasted += textToType.count
+
+                    owLog("[OpenWhisper] Live chunk: +'\(textToType)' (total \(self.liveCharsPasted) chars)")
+
+                    let paster = self.textPaster
+                    DispatchQueue.global(qos: .userInteractive).async {
+                        paster?.typeText(textToType, into: target)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.liveTranscribing = false
+                }
+                try? FileManager.default.removeItem(at: snapshot)
+                owLog("[OpenWhisper] Live chunk error: \(error)")
             }
         }
     }

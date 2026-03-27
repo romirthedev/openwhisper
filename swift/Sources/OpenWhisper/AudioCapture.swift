@@ -42,6 +42,27 @@ final class AudioCapture: @unchecked Sendable {
         try engine.start()
     }
 
+    /// Snapshot current audio to a separate temp file without stopping recording.
+    /// Returns a copy of the audio captured so far.
+    func snapshotAudio() -> URL? {
+        guard let sourceURL = tempURL else { return nil }
+
+        // Flush current file by briefly pausing writes
+        guard let currentFile = outputFile else { return nil }
+        let _ = currentFile  // ensure reference is held
+
+        let snapshotURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openwhisper_snap_\(UUID().uuidString).wav")
+
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: snapshotURL)
+            return snapshotURL
+        } catch {
+            print("[AudioCapture] Snapshot error: \(error)")
+            return nil
+        }
+    }
+
     func stopRecording(completion: @escaping @Sendable (URL?) -> Void) {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()

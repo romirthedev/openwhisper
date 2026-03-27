@@ -94,21 +94,19 @@ def clean_with_ollama(raw: str, config: dict) -> str:
     messages = [
         {
             "role": "system",
-            "content": (
-                "Clean up this voice transcript. Output ONLY the cleaned text. No explanations, no bullet points, no commentary.\n\n"
-                "Rules: Remove filler (um, uh, hmm). Fix punctuation. If speaker corrects themselves (says 'never mind', 'actually', 'no wait'), keep only the correction. Keep everything else exactly as said.\n\n"
-                "Example:\n"
-                "User: hey um hope you are doing well I uh wanted to ask about the project\n"
-                "Assistant: Hey, hope you are doing well. I wanted to ask about the project.\n\n"
-                "Example:\n"
-                "User: can we meet at three actually no five works better\n"
-                "Assistant: Can we meet at five? That works better.\n\n"
-                "Example:\n"
-                "User: hey bob um I won't be in today at three just uh let me know what works\n"
-                "Assistant: Hey Bob, I won't be in today at three. Just let me know what works."
-            )
+            "content": "Reformat dictated text. Remove filler (um, uh). Fix punctuation. Output ONLY the cleaned text."
         },
-        {"role": "user", "content": raw}
+        # Few-shot examples — TRANSCRIPT: prefix prevents model from answering questions
+        {"role": "user", "content": "TRANSCRIPT: hey um hope you are doing well"},
+        {"role": "assistant", "content": "Hey, hope you are doing well."},
+        {"role": "user", "content": "TRANSCRIPT: how are you doing today um I was wondering if you could help me"},
+        {"role": "assistant", "content": "How are you doing today? I was wondering if you could help me."},
+        {"role": "user", "content": "TRANSCRIPT: hey how are you doing uh what time works for lunch"},
+        {"role": "assistant", "content": "Hey, how are you doing? What time works for lunch?"},
+        {"role": "user", "content": "TRANSCRIPT: can we meet at three actually no five works better"},
+        {"role": "assistant", "content": "Can we meet at five? That works better."},
+        # Actual transcript
+        {"role": "user", "content": f"TRANSCRIPT: {raw}"}
     ]
 
     payload = json.dumps({
@@ -155,11 +153,14 @@ def clean_with_ollama(raw: str, config: dict) -> str:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: whisper_worker.py <wav_file> [duration]", file=sys.stderr)
+        print("Usage: whisper_worker.py <wav_file> [duration] [--raw-only]", file=sys.stderr)
         sys.exit(1)
 
-    wav_path = sys.argv[1]
-    duration = float(sys.argv[2]) if len(sys.argv) >= 3 else 0.0
+    raw_only = "--raw-only" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--raw-only"]
+
+    wav_path = args[0]
+    duration = float(args[1]) if len(args) >= 2 else 0.0
 
     if not os.path.exists(wav_path):
         print(f"[whisper_worker] File not found: {wav_path}", file=sys.stderr)
@@ -171,6 +172,11 @@ def main():
     raw = transcribe_audio(wav_path, config)
     if not raw:
         sys.exit(0)
+
+    # Raw-only mode for live dictation — skip Ollama, skip DB save
+    if raw_only:
+        print(raw, flush=True)
+        return
 
     if config.get("use_ai", True):
         cleaned = clean_with_ollama(raw, config)

@@ -38,11 +38,22 @@ final class Transcriber: @unchecked Sendable {
     }
 
     func transcribe(wavFile: URL, duration: TimeInterval = 0) async throws -> String {
+        return try await runWorker(wavFile: wavFile, duration: duration, rawOnly: false)
+    }
+
+    /// Raw transcription only — no Ollama cleanup, no DB save. Used for live dictation chunks.
+    func transcribeRawOnly(wavFile: URL) async throws -> String {
+        return try await runWorker(wavFile: wavFile, duration: 0, rawOnly: true)
+    }
+
+    private func runWorker(wavFile: URL, duration: TimeInterval, rawOnly: Bool) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: self.pythonPath)
-                process.arguments = [self.workerPath, wavFile.path, String(format: "%.2f", duration)]
+                var args = [self.workerPath, wavFile.path, String(format: "%.2f", duration)]
+                if rawOnly { args.append("--raw-only") }
+                process.arguments = args
 
                 let pipe    = Pipe()
                 let errPipe = Pipe()
