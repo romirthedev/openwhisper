@@ -172,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: hostingController)
             window.title = "OpenWhisper Settings"
             window.styleMask = [.titled, .closable]
-            window.setContentSize(NSSize(width: 340, height: 300))
+            window.setContentSize(NSSize(width: 340, height: 340))
             window.center()
             settingsWindowController = NSWindowController(window: window)
         }
@@ -238,36 +238,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         owLog("[OpenWhisper] stopRecording — target: \(target?.localizedName ?? "nil"), live: \(wasLive), liveChars: \(liveChars)")
 
         if wasLive {
-            // Live mode: do final full transcription + Ollama cleanup, replace what was typed
-            pillWindow?.show(state: .transcribing)
-            let duration = Date().timeIntervalSince(recordingStart)
+            // Live mode: just stop — no final transcription, no post-processing
             audioCapture?.stopRecording { [weak self] wavURL in
-                guard let self = self, let wavURL = wavURL else {
-                    Task { @MainActor in self?.pillWindow?.hide() }
-                    return
+                if let wavURL = wavURL {
+                    try? FileManager.default.removeItem(at: wavURL)
                 }
                 Task { @MainActor in
-                    do {
-                        let text = try await self.transcriber?.transcribe(wavFile: wavURL, duration: duration) ?? ""
-                        owLog("[OpenWhisper] Final transcription: '\(text)' (\(text.count) chars)")
-                        if !text.isEmpty && liveChars > 0 {
-                            let paster = self.textPaster
-                            DispatchQueue.global(qos: .userInteractive).async {
-                                paster?.selectAndReplace(charCount: liveChars, with: text, into: target)
-                            }
-                        } else if !text.isEmpty {
-                            let paster = self.textPaster
-                            DispatchQueue.global(qos: .userInteractive).async {
-                                paster?.paste(text: text, into: target)
-                            }
-                        }
-                    } catch {
-                        owLog("[OpenWhisper] Final transcription error: \(error)")
-                    }
-                    self.pillWindow?.hide()
-                    self.liveTranscribedText = ""
-                    self.liveCharsPasted = 0
-                    try? FileManager.default.removeItem(at: wavURL)
+                    self?.pillWindow?.hide()
+                    self?.liveTranscribedText = ""
+                    self?.liveCharsPasted = 0
                 }
             }
         } else {
@@ -303,7 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Live Dictation
 
     private func startLiveLoop() {
-        liveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        liveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.liveTranscribeChunk()
             }
@@ -325,26 +304,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run {
                     self.liveTranscribing = false
 
-                    // Diff: find new text beyond what we already pasted
-                    let previousText = self.liveTranscribedText
-                    guard fullText.count > previousText.count else { return }
+                    // Word-based diff: only paste words beyond what we've already pasted
+                    let prevWords = self.liveTranscribedText.split(separator: " ").map(String.init)
+                    let fullWords = fullText.split(separator: " ").map(String.init)
+                    guard fullWords.count > prevWords.count else { return }
 
-                    // Find the new portion
-                    let newText: String
-                    if fullText.hasPrefix(previousText) {
-                        newText = String(fullText.dropFirst(previousText.count)).trimmingCharacters(in: .whitespaces)
-                    } else {
-                        // Whisper re-transcribed differently — just append what looks new
-                        let previousWords = Set(previousText.lowercased().split(separator: " ").map(String.init))
-                        let fullWords = fullText.split(separator: " ")
-                        let newWords = fullWords.filter { !previousWords.contains(String($0).lowercased()) }
-                        newText = newWords.joined(separator: " ")
-                    }
-
+                    let newWords = Array(fullWords.dropFirst(prevWords.count))
+                    let newText = newWords.joined(separator: " ")
                     guard !newText.isEmpty else { return }
 
                     let textToType = (self.liveCharsPasted > 0 ? " " : "") + newText
-                    self.liveTranscribedText = fullText
+                    self.liveTranscribedText = fullWords.joined(separator: " ")
                     self.liveCharsPasted += textToType.count
 
                     owLog("[OpenWhisper] Live chunk: +'\(textToType)' (total \(self.liveCharsPasted) chars)")

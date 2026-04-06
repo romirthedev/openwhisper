@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("modelSize") private var modelSize = "base.en"
     @AppStorage("language") private var language = "en"
     @AppStorage("dictationMode") private var dictationMode = "standard"
+    @AppStorage("useAI") private var useAI = false
     @AppStorage("hotkeyCode") private var hotkeyCode = 54
 
     private let modelOptions = ["tiny.en", "base.en", "small.en", "medium.en", "large-v3"]
@@ -66,6 +67,21 @@ struct SettingsView: View {
                 }
 
                 HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("AI Cleanup")
+                            .font(.system(size: 13))
+                            .foregroundColor(.black)
+                        Text("Removes fillers via Ollama (slower, may answer questions)")
+                            .font(.system(size: 10))
+                            .foregroundColor(.black.opacity(0.4))
+                    }
+                    Spacer()
+                    Toggle("", isOn: $useAI)
+                        .labelsHidden()
+                        .onChange(of: useAI) { _ in saveConfig() }
+                }
+
+                HStack {
                     Text("Push-to-talk")
                         .font(.system(size: 13))
                         .foregroundColor(.black)
@@ -99,8 +115,9 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 340, height: 300)
+        .frame(width: 340, height: 340)
         .background(Color(red: 0.961, green: 0.941, blue: 0.910))
+        .colorScheme(.light)
     }
 
     private func saveConfig() {
@@ -117,6 +134,7 @@ struct SettingsView: View {
         }
         existing["whisper_model"] = modelSize
         existing["language"] = language
+        existing["use_ai"] = useAI
 
         if let data = try? JSONSerialization.data(withJSONObject: existing, options: .prettyPrinted) {
             try? data.write(to: configFile)
